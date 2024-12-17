@@ -1,5 +1,6 @@
 const express = require('express');
 const multer = require('multer');
+const { v4: uuidv4 } = require('uuid'); // To generate unique IDs
 const { loadModel, predictClassification } = require('../services/modelService');
 const { savePrediction, getHistories } = require('../services/firestoreService'); // Import the service functions
 
@@ -32,22 +33,31 @@ router.post('/predict', (req, res) => {
     }
 
     try {
-      // If no errors, proceed with prediction
+      // Step 1: Perform the prediction
       const imageBuffer = req.file.buffer;
       const model = await loadModel();  // Load the model (once)
-      const result = await predictClassification(model, imageBuffer); // Predict using the uploaded image buffer
+      const predictionResult = await predictClassification(model, imageBuffer); // Predict using the uploaded image buffer
 
-      // Save prediction to Firestore
-      const predictionId = new Date().toISOString(); // Use current timestamp as unique ID
-      await savePrediction(predictionId, result.label, result.suggestion); // Save prediction to Firestore
+      // Step 2: Generate unique ID and timestamp
+      const predictionId = uuidv4(); // Generate a unique ID
+      const createdAt = new Date().toISOString(); // Timestamp
 
-      // Return the prediction result
-      return res.status(200).json({
+      // Step 3: Save prediction to Firestore
+      await savePrediction(predictionId, predictionResult.label, predictionResult.suggestion, createdAt);
+
+      // Step 4: Return the prediction result in the expected format
+      return res.status(201).json({
         status: 'success',
         message: 'Model is predicted successfully',
-        data: result,
+        data: {
+          id: predictionId,
+          result: predictionResult.label, // Use 'result' instead of 'label'
+          suggestion: predictionResult.suggestion,
+          createdAt: createdAt,
+        },
       });
     } catch (error) {
+      console.error('Error during prediction:', error);
       return res.status(400).json({
         status: 'fail',
         message: 'Terjadi kesalahan dalam melakukan prediksi',
